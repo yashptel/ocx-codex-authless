@@ -4,16 +4,46 @@ Small, cross-platform Node.js utility that configures the OCX Codex provider to 
 
 ## Run it
 
-Prerequisites: run `ocx connect` and `ocx sync` first. Then use a published immutable tag (replace `<tag>` with the release you reviewed):
+Prerequisites: run `ocx connect` and `ocx sync` first. The examples below use the reviewed, immutable `v0.1.0` tag. `main` is also shown for the latest development version.
+
+### macOS, Linux, and Git Bash
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/<tag>/ocx-codex-authless.cjs | node
+curl -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.1.0/ocx-codex-authless.cjs | node
 ```
 
-For the latest development version, use `main`:
+For `main`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/main/ocx-codex-authless.cjs | node
+```
+
+### Windows PowerShell
+
+Use `curl.exe` because `curl` may be a PowerShell alias:
+
+```powershell
+curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.1.0/ocx-codex-authless.cjs | node
+```
+
+For `main`:
+
+```powershell
+curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/main/ocx-codex-authless.cjs | node
+```
+
+### Windows Command Prompt
+
+On current Windows versions, `curl.exe` and `node` can be piped directly:
+
+```bat
+curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.1.0/ocx-codex-authless.cjs | node
+```
+
+For `main`:
+
+```bat
+curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/main/ocx-codex-authless.cjs | node
 ```
 
 Pinned tags are recommended for repeatable use. `main` is mutable and can change between runs.
@@ -29,9 +59,11 @@ After it succeeds, fully quit and reopen Codex Desktop. Running `ocx sync` later
 `curl ... | node` downloads and immediately executes remote code with your local user permissions. Review the script and prefer a pinned tag or commit. For higher-assurance use, download it first, inspect it, and run the local file instead:
 
 ```bash
-curl -fsSLo ocx-codex-authless.cjs https://raw.githubusercontent.com/yashptel/ocx-codex-authless/<tag>/ocx-codex-authless.cjs
+curl -fsSLo ocx-codex-authless.cjs https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.1.0/ocx-codex-authless.cjs
 node ocx-codex-authless.cjs
 ```
+
+In PowerShell or Command Prompt, use `curl.exe` for the download command too.
 
 ## Development
 

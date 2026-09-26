@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -8,6 +9,8 @@ import { fileURLToPath } from "node:url";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const scriptPath = path.join(projectRoot, "ocx-codex-authless.cjs");
+const require = createRequire(import.meta.url);
+const { run } = require(scriptPath);
 
 function makeFixture({ config, token, envContents } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "ocx-codex-authless-"));
@@ -143,7 +146,7 @@ test("patches only the exact provider section and backs up changed files", () =>
     const updatedEnv = fs.readFileSync(fixture.envFile, "utf8");
     assert.equal(
       updatedEnv,
-      `# preserved\nOTHER=value\n${"OPENCODEX_API_AUTH_TOKEN"}=${token}\n`,
+      `# preserved\nOTHER=value\n${"OPENCODEX_API_AUTH_TOKEN"}='${token}'\n`,
     );
     assert.ok(!updatedEnv.includes("old-token"));
 
@@ -219,6 +222,121 @@ test("runs when piped to node from stdin", () => {
   }
 });
 
+test("ignores table-looking lines inside basic and literal multiline strings", () => {
+  const token = "multiline-section-token";
+  const originalConfig = [
+    "[metadata]",
+    'basic = """',
+    "[model_providers.opencodex]",
+    "requires_openai_auth = true",
+    'env_key = "FROM_BASIC_STRING"',
+    '"""',
+    "literal = '''",
+    "[model_providers.other]",
+    "requires_openai_auth = true",
+    "'''",
+    "",
+    "[model_providers.opencodex]",
+    'description = """',
+    "[model_providers.fake]",
+    "requires_openai_auth = true",
+    'env_key = "FROM_TARGET_STRING"',
+    '"""',
+    "requires_openai_auth = true",
+    'env_key = "OLD_KEY"',
+    "",
+    "[model_providers.after]",
+    "requires_openai_auth = true",
+    'env_key = "AFTER_KEY"',
+    "",
+  ].join("\n");
+  const fixture = makeFixture({ config: originalConfig, token });
+
+  try {
+    const result = runScript(fixture);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(!result.stdout.includes(token));
+    const updatedConfig = fs.readFileSync(fixture.configFile, "utf8");
+    assert.match(
+      updatedConfig,
+      /basic = """\n\[model_providers\.opencodex\]\nrequires_openai_auth = true\nenv_key = "FROM_BASIC_STRING"\n"""/,
+    );
+    assert.match(
+      updatedConfig,
+      /literal = '''\n\[model_providers\.other\]\nrequires_openai_auth = true\n'''/,
+    );
+    assert.match(
+      updatedConfig,
+      /\[model_providers\.opencodex\]\ndescription = """\n\[model_providers\.fake\]\nrequires_openai_auth = true\nenv_key = "FROM_TARGET_STRING"\n"""\nrequires_openai_auth = false\nenv_key = "OPENCODEX_API_AUTH_TOKEN"/,
+    );
+    assert.match(
+      updatedConfig,
+      /\[model_providers\.after\]\nrequires_openai_auth = true\nenv_key = "AFTER_KEY"/,
+    );
+  } finally {
+    removeFixture(fixture);
+  }
+});
+
+test("quotes dotenv-significant token characters without printing the token", () => {
+  const token = 'token with spaces # equals = "quotes" \\slashes $dollar';
+  const fixture = makeFixture({ token });
+
+  try {
+    const result = runScript(fixture);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(!result.stdout.includes(token));
+    assert.ok(!result.stderr.includes(token));
+    assert.equal(
+      fs.readFileSync(fixture.envFile, "utf8"),
+      `OPENCODEX_API_AUTH_TOKEN='${token}'\n`,
+    );
+  } finally {
+    removeFixture(fixture);
+  }
+});
+
+test("uses a double-quoted dotenv value when the token contains a single quote", () => {
+  const token = "token's # equals = $dollar";
+  const fixture = makeFixture({ token });
+
+  try {
+    const result = runScript(fixture);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(!result.stdout.includes(token));
+    assert.ok(!result.stderr.includes(token));
+    assert.equal(
+      fs.readFileSync(fixture.envFile, "utf8"),
+      `OPENCODEX_API_AUTH_TOKEN="${token}"\n`,
+    );
+  } finally {
+    removeFixture(fixture);
+  }
+});
+
+test("rejects an ambiguously quoted token before writing files", () => {
+  const token = "token's\\ambiguous\"value";
+  const originalConfig =
+    '[model_providers.opencodex]\nrequires_openai_auth = true\nenv_key = "OLD"\n';
+  const fixture = makeFixture({ config: originalConfig, token });
+
+  try {
+    const result = runScript(fixture);
+
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /cannot be serialized safely/);
+    assert.ok(!result.stdout.includes(token));
+    assert.ok(!result.stderr.includes(token));
+    assert.equal(fs.readFileSync(fixture.configFile, "utf8"), originalConfig);
+    assert.equal(fs.existsSync(fixture.envFile), false);
+  } finally {
+    removeFixture(fixture);
+  }
+});
+
 test("adds missing settings inside the target section only", () => {
   const token = "missing-settings-token-never-print-this";
   const originalConfig = [
@@ -285,13 +403,93 @@ test("rejects a token containing an embedded newline without writing files", () 
     const result = runScript(fixture);
 
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /single-line token/);
+    assert.match(result.stderr, /control character/);
     assert.ok(!result.stdout.includes(token));
     assert.ok(!result.stderr.includes(token));
     assert.equal(
       fs.readFileSync(fixture.configFile, "utf8"),
       "[model_providers.opencodex]\nrequires_openai_auth = true\n",
     );
+    assert.equal(fs.existsSync(fixture.envFile), false);
+  } finally {
+    removeFixture(fixture);
+  }
+});
+
+test("rolls back config and env when the env write fails", () => {
+  const token = "rollback-write-token";
+  const originalConfig =
+    '[model_providers.opencodex]\nrequires_openai_auth = true\nenv_key = "OLD"\n';
+  const originalEnv = "KEEP=1\n";
+  const fixture = makeFixture({
+    config: originalConfig,
+    token,
+    envContents: originalEnv,
+  });
+  const originalWriteFileSync = fs.writeFileSync;
+  let injectedFailure = false;
+
+  fs.writeFileSync = (filePath, ...args) => {
+    if (path.resolve(filePath) === fixture.envFile && !injectedFailure) {
+      injectedFailure = true;
+      originalWriteFileSync.call(fs, filePath, ...args);
+      throw new Error("simulated env write failure");
+    }
+    return originalWriteFileSync.call(fs, filePath, ...args);
+  };
+
+  try {
+    assert.throws(
+      () => run(isolatedEnvironment(fixture)),
+      /Could not write file/,
+    );
+  } finally {
+    fs.writeFileSync = originalWriteFileSync;
+  }
+
+  try {
+    assert.equal(injectedFailure, true);
+    assert.equal(fs.readFileSync(fixture.configFile, "utf8"), originalConfig);
+    assert.equal(fs.readFileSync(fixture.envFile, "utf8"), originalEnv);
+  } finally {
+    removeFixture(fixture);
+  }
+});
+
+test("rolls back config and removes a new env file after verification failure", () => {
+  const token = "rollback-verification-token";
+  const originalConfig =
+    '[model_providers.opencodex]\nrequires_openai_auth = true\nenv_key = "OLD"\n';
+  const fixture = makeFixture({ config: originalConfig, token });
+  const originalReadFileSync = fs.readFileSync;
+  const originalWriteFileSync = fs.writeFileSync;
+  let configWritten = false;
+
+  fs.writeFileSync = (filePath, ...args) => {
+    const result = originalWriteFileSync.call(fs, filePath, ...args);
+    if (path.resolve(filePath) === fixture.configFile) configWritten = true;
+    return result;
+  };
+  fs.readFileSync = (filePath, ...args) => {
+    if (configWritten && path.resolve(filePath) === fixture.configFile) {
+      return originalConfig;
+    }
+    return originalReadFileSync.call(fs, filePath, ...args);
+  };
+
+  try {
+    assert.throws(
+      () => run(isolatedEnvironment(fixture)),
+      /Verification failed after writing the configuration/,
+    );
+  } finally {
+    fs.readFileSync = originalReadFileSync;
+    fs.writeFileSync = originalWriteFileSync;
+  }
+
+  try {
+    assert.equal(configWritten, true);
+    assert.equal(fs.readFileSync(fixture.configFile, "utf8"), originalConfig);
     assert.equal(fs.existsSync(fixture.envFile), false);
   } finally {
     removeFixture(fixture);

@@ -85,10 +85,105 @@ function parseTableHeader(line) {
   return null;
 }
 
+function scanTomlLine(text, multilineState) {
+  let state = multilineState;
+  let index = 0;
+  let containsMultilineString = false;
+
+  while (index < text.length) {
+    if (state === "basic-multiline") {
+      if (text[index] === "\\") {
+        index += 2;
+      } else if (text.startsWith('"""', index)) {
+        state = null;
+        index += 3;
+      } else {
+        index += 1;
+      }
+      continue;
+    }
+
+    if (state === "literal-multiline") {
+      if (text.startsWith("'''", index)) {
+        state = null;
+        index += 3;
+      } else {
+        index += 1;
+      }
+      continue;
+    }
+
+    if (text[index] === "#") break;
+
+    if (text[index] === '"') {
+      if (text.startsWith('"""', index)) {
+        state = "basic-multiline";
+        containsMultilineString = true;
+        index += 3;
+        continue;
+      }
+
+      index += 1;
+      while (index < text.length) {
+        if (text[index] === "\\") {
+          index += 2;
+        } else if (text[index] === '"') {
+          index += 1;
+          break;
+        } else {
+          index += 1;
+        }
+      }
+      continue;
+    }
+
+    if (text[index] === "'") {
+      if (text.startsWith("'''", index)) {
+        state = "literal-multiline";
+        containsMultilineString = true;
+        index += 3;
+        continue;
+      }
+
+      index += 1;
+      while (index < text.length && text[index] !== "'") index += 1;
+      if (index < text.length) index += 1;
+      continue;
+    }
+
+    index += 1;
+  }
+
+  return { state, containsMultilineString };
+}
+
+function annotateTomlLines(lines) {
+  let multilineState = null;
+
+  return lines.map((line) => {
+    const insideMultilineString = multilineState !== null;
+    const scan = scanTomlLine(line.text, multilineState);
+    multilineState = scan.state;
+
+    return {
+      ...line,
+      insideMultilineString,
+      containsMultilineString: scan.containsMultilineString,
+    };
+  });
+}
+
 function findTargetSection(lines) {
   const matches = [];
 
   for (let index = 0; index < lines.length; index += 1) {
+    if (
+      lines[index].insideMultilineString ||
+      lines[index].containsMultilineString
+    ) {
+      continue;
+    }
+
     const header = parseTableHeader(lines[index].text);
     if (header?.name === TARGET_SECTION && !header.array) {
       matches.push(index);
@@ -107,7 +202,11 @@ function findTargetSection(lines) {
   let end = lines.length;
 
   for (let index = start + 1; index < lines.length; index += 1) {
-    if (parseTableHeader(lines[index].text)) {
+    if (
+      !lines[index].insideMultilineString &&
+      !lines[index].containsMultilineString &&
+      parseTableHeader(lines[index].text)
+    ) {
       end = index;
       break;
     }
@@ -149,13 +248,20 @@ function appendSectionLine(lines, section, text, eol) {
 }
 
 function patchConfig(config) {
-  const lines = splitLines(config);
+  const lines = annotateTomlLines(splitLines(config));
   const section = findTargetSection(lines);
   const eol = detectEol(config);
   let authlessConfigured = false;
   let envKeyConfigured = false;
 
   for (let index = section.start + 1; index < section.end; index += 1) {
+    if (
+      lines[index].insideMultilineString ||
+      lines[index].containsMultilineString
+    ) {
+      continue;
+    }
+
     const assignment = parseTargetAssignment(lines[index].text);
     if (!assignment) continue;
 
@@ -196,7 +302,7 @@ function patchConfig(config) {
 }
 
 function readTargetState(config) {
-  const lines = splitLines(config);
+  const lines = annotateTomlLines(splitLines(config));
   const section = findTargetSection(lines);
   const state = {
     authless: false,
@@ -204,6 +310,13 @@ function readTargetState(config) {
   };
 
   for (let index = section.start + 1; index < section.end; index += 1) {
+    if (
+      lines[index].insideMultilineString ||
+      lines[index].containsMultilineString
+    ) {
+      continue;
+    }
+
     const assignment = parseTargetAssignment(lines[index].text);
     if (!assignment) continue;
 
@@ -231,26 +344,44 @@ function isTokenAssignment(line) {
   ).test(line);
 }
 
+function serializeDotenvValue(value) {
+  if ([...value].some((character) => {
+    const code = character.charCodeAt(0);
+    return code < 0x20 || code === 0x7f;
+  })) {
+    throw new Error(
+      "OCX token contains a control character that cannot be stored safely in .env",
+    );
+  }
+
+  if (!value.includes("'")) return `'${value}'`;
+
+  if (!value.includes('"') && !value.includes("\\")) {
+    return `"${value}"`;
+  }
+
+  throw new Error(
+    "OCX token contains quotes that cannot be serialized safely in .env",
+  );
+}
+
 function patchEnv(envContents, token) {
   const lines = envContents ? splitLines(envContents).map(({ text }) => text) : [];
+  const serializedToken = serializeDotenvValue(token);
 
   while (lines.at(-1) === "") lines.pop();
 
   const retained = lines.filter((line) => !isTokenAssignment(line));
-  retained.push(`${TOKEN_ENV_KEY}=${token}`);
+  retained.push(`${TOKEN_ENV_KEY}=${serializedToken}`);
 
   return `${retained.join(detectEol(envContents))}${detectEol(envContents)}`;
 }
 
 function tokenFromFile(tokenFile) {
-  const token = readText(tokenFile, "OCX token file").trim();
+  const token = readText(tokenFile, "OCX token file").replace(/[\r\n]+$/, "");
 
   if (!token) {
     throw new Error(`OCX token file is empty: ${tokenFile}`);
-  }
-
-  if (/[\r\n]/.test(token)) {
-    throw new Error("OCX token file must contain a single-line token");
   }
 
   return token;
@@ -305,9 +436,51 @@ function chmodPrivateBestEffort(filePath) {
 }
 
 function hasTokenAssignment(envContents, token) {
+  const serializedToken = serializeDotenvValue(token);
+
   return splitLines(envContents).some(
-    ({ text }) => text === `${TOKEN_ENV_KEY}=${token}`,
+    ({ text }) => text === `${TOKEN_ENV_KEY}=${serializedToken}`,
   );
+}
+
+function restoreFile(filePath, existed, contents, mode) {
+  if (!existed) {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    return;
+  }
+
+  fs.writeFileSync(filePath, contents, { encoding: "utf8" });
+  if (process.platform !== "win32") fs.chmodSync(filePath, mode);
+}
+
+function rollback(paths, snapshots) {
+  const failures = [];
+
+  try {
+    restoreFile(
+      paths.configFile,
+      snapshots.config.existed,
+      snapshots.config.contents,
+      snapshots.config.mode,
+    );
+  } catch {
+    failures.push(paths.configFile);
+  }
+
+  try {
+    restoreFile(
+      paths.envFile,
+      snapshots.env.existed,
+      snapshots.env.contents,
+      snapshots.env.mode,
+    );
+  } catch {
+    failures.push(paths.envFile);
+  }
+
+  if (failures.length > 0) {
+    throw new Error(`Could not roll back: ${failures.join(", ")}`);
+  }
 }
 
 function run(environment = process.env) {
@@ -330,41 +503,63 @@ function run(environment = process.env) {
   const token = tokenFromFile(paths.tokenFile);
   const config = readText(paths.configFile, "Codex config");
   const patchedConfig = patchConfig(config);
-  const existingEnv = fs.existsSync(paths.envFile)
+  const envExisted = fs.existsSync(paths.envFile);
+  const existingEnv = envExisted
     ? readText(paths.envFile, "Codex environment file")
     : "";
   const patchedEnv = patchEnv(existingEnv, token);
+  const snapshots = {
+    config: {
+      existed: true,
+      contents: config,
+      mode: fs.statSync(paths.configFile).mode & 0o777,
+    },
+    env: {
+      existed: envExisted,
+      contents: existingEnv,
+      mode: envExisted ? fs.statSync(paths.envFile).mode & 0o777 : 0o600,
+    },
+  };
 
   fs.mkdirSync(paths.codexHome, { recursive: true });
 
   const configBackup = createBackup(paths.configFile);
   const envBackup = createBackup(paths.envFile, { privateFile: true });
 
-  writeText(paths.configFile, patchedConfig);
-  writeText(paths.envFile, patchedEnv, { privateFile: true });
-  chmodPrivateBestEffort(paths.tokenFile);
+  try {
+    writeText(paths.configFile, patchedConfig);
+    writeText(paths.envFile, patchedEnv, { privateFile: true });
+    chmodPrivateBestEffort(paths.tokenFile);
 
-  const finalState = readTargetState(
-    readText(paths.configFile, "updated Codex config"),
-  );
-  const finalEnv = readText(paths.envFile, "updated Codex environment file");
+    const finalState = readTargetState(
+      readText(paths.configFile, "updated Codex config"),
+    );
+    const finalEnv = readText(paths.envFile, "updated Codex environment file");
 
-  if (
-    !finalState.authless ||
-    !finalState.envKeyConfigured ||
-    !hasTokenAssignment(finalEnv, token)
-  ) {
-    throw new Error("Verification failed after writing the configuration");
+    if (
+      !finalState.authless ||
+      !finalState.envKeyConfigured ||
+      !hasTokenAssignment(finalEnv, token)
+    ) {
+      throw new Error("Verification failed after writing the configuration");
+    }
+
+    return {
+      ...paths,
+      configBackup,
+      envBackup,
+      authless: finalState.authless,
+      envKeyConfigured: finalState.envKeyConfigured,
+      tokenInstalled: true,
+    };
+  } catch (error) {
+    try {
+      rollback(paths, snapshots);
+    } catch (rollbackError) {
+      throw new Error(`${error.message}; ${rollbackError.message}`);
+    }
+    throw error;
   }
-
-  return {
-    ...paths,
-    configBackup,
-    envBackup,
-    authless: finalState.authless,
-    envKeyConfigured: finalState.envKeyConfigured,
-    tokenInstalled: true,
-  };
 }
 
 function printSummary(result) {
