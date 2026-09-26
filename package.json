@@ -1,10 +1,11 @@
 {
   "name": "ocx-codex-authless",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Configure the OCX Codex provider to use its service token without OpenAI authentication.",
   "type": "module",
   "bin": {
-    "ocx-codex-authless": "./ocx-codex-authless.cjs"
+    "ocx-codex-authless": "./ocx-codex-authless.cjs",
+    "ocx-port-threads": "./ocx-port-threads.cjs"
   },
   "scripts": {
     "test": "node --test"
@@ -15,6 +16,7 @@
   "license": "MIT",
   "files": [
     "ocx-codex-authless.cjs",
+    "ocx-port-threads.cjs",
     "README.md",
     "LICENSE"
   ],
