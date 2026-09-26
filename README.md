@@ -54,6 +54,51 @@ Custom locations are supported with `OPENCODEX_HOME` and `CODEX_HOME`.
 
 After it succeeds, fully quit and reopen Codex Desktop. Running `ocx sync` later may restore `requires_openai_auth = true`; run this utility again afterward.
 
+## Port old Codex tasks
+
+Older Codex tasks can stay on the `openai` provider even after OCX is configured. This utility moves them to `opencodex` and keeps the change when Codex reconciles a task during resume or search.
+
+It requires Node.js 22.13 or newer. Fully quit Codex Desktop, ChatGPT Desktop, Codex CLI, and any editor extension that runs Codex before applying it.
+
+### macOS, Linux, and Git Bash
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.2.0/ocx-port-threads.cjs | node
+```
+
+Preview the plan without changing anything:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.2.0/ocx-port-threads.cjs | node - --dry-run
+```
+
+Revert the newest port backup, or pass a backup directory explicitly:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.2.0/ocx-port-threads.cjs | node - --revert
+curl -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.2.0/ocx-port-threads.cjs | node - --revert /path/to/ocx-port-threads-backup
+```
+
+### Windows PowerShell
+
+Use `curl.exe` because `curl` may be a PowerShell alias:
+
+```powershell
+curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.2.0/ocx-port-threads.cjs | node
+curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.2.0/ocx-port-threads.cjs | node - --dry-run
+curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.2.0/ocx-port-threads.cjs | node - --revert
+```
+
+### Windows Command Prompt
+
+```bat
+curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.2.0/ocx-port-threads.cjs | node
+curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.2.0/ocx-port-threads.cjs | node - --dry-run
+curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.2.0/ocx-port-threads.cjs | node - --revert
+```
+
+The porter updates `threads.model_provider` and appends a small `session_meta` marker to each selected rollout file. Existing rollout bytes stay unchanged. In port mode it also repairs stored history offsets for non-fork tasks when their content shows they are stale. Backups are stored under `CODEX_HOME/backups/ocx-port-threads-<timestamp>/`; the state database is always backed up before a write, and the history database is backed up when offset repairs are needed. Reopen Codex after it succeeds.
+
 ## Remote-pipe warning
 
 `curl ... | node` downloads and immediately executes remote code with your local user permissions. Review the script and prefer a pinned tag or commit. For higher-assurance use, download it first, inspect it, and run the local file instead:
@@ -67,7 +112,7 @@ In PowerShell or Command Prompt, use `curl.exe` for the download command too.
 
 ## Development
 
-Requires Node.js 18 or newer. There are no third-party dependencies.
+The authless configurator supports Node.js 18 or newer; the task porter requires Node.js 22.13 or newer. There are no third-party dependencies.
 
 ```bash
 npm test
