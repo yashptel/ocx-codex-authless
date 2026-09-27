@@ -87,6 +87,7 @@ Use `curl.exe` because `curl` may be a PowerShell alias:
 curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.2.0/ocx-port-threads.cjs | node
 curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.2.0/ocx-port-threads.cjs | node - --dry-run
 curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.2.0/ocx-port-threads.cjs | node - --revert
+curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.2.0/ocx-port-threads.cjs | node - --revert "$env:USERPROFILE\.codex\backups\ocx-port-threads-<timestamp>"
 ```
 
 ### Windows Command Prompt
@@ -95,7 +96,36 @@ curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.
 curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.2.0/ocx-port-threads.cjs | node
 curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.2.0/ocx-port-threads.cjs | node - --dry-run
 curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.2.0/ocx-port-threads.cjs | node - --revert
+curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.2.0/ocx-port-threads.cjs | node - --revert "%USERPROFILE%\.codex\backups\ocx-port-threads-<timestamp>"
 ```
+
+### Options
+
+Pass options after `node -` when you pipe the script, or after the file name when you run a downloaded copy.
+
+| Option | Effect |
+| --- | --- |
+| none | Port every `openai` task to `opencodex` and repair stale history offsets. |
+| `--dry-run` | Print the plan for each task and the totals. Changes nothing. Codex can stay open. |
+| `--revert` | Undo the newest port backup. Only tasks that the port changed go back to `openai`. |
+| `--revert <backupDir>` | Undo the port recorded in that backup directory. |
+| `--ignore-running-codex` | Skip the check for running Codex processes. Use it only when no Codex process uses the target `CODEX_HOME`, for example with a custom `CODEX_HOME`. |
+
+The porter reads `CODEX_HOME` (default `~/.codex`) and `CODEX_SQLITE_HOME` (default `CODEX_HOME`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.2.0/ocx-port-threads.cjs | CODEX_HOME=/path/to/codex-home node - --dry-run
+```
+
+To inspect the porter before you run it, download it first:
+
+```bash
+curl -fsSLo ocx-port-threads.cjs https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.2.0/ocx-port-threads.cjs
+node ocx-port-threads.cjs --dry-run
+node ocx-port-threads.cjs
+```
+
+### What it changes
 
 The porter updates `threads.model_provider` and appends a small `session_meta` marker to each selected rollout file. Existing rollout bytes stay unchanged. In port mode it also repairs stored history offsets for non-fork tasks when their content shows they are stale. Backups are stored under `CODEX_HOME/backups/ocx-port-threads-<timestamp>/`; the state database is always backed up before a write, and the history database is backed up when offset repairs are needed. Reopen Codex after it succeeds.
 
