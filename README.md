@@ -129,6 +129,37 @@ node ocx-port-threads.cjs
 
 The porter updates `threads.model_provider` and appends a small `session_meta` marker to each selected rollout file. Existing rollout bytes stay unchanged. In port mode it also repairs stored history offsets for non-fork tasks when their content shows they are stale. Backups are stored under `CODEX_HOME/backups/ocx-port-threads-<timestamp>/`; the state database is always backed up before a write, and the history database is backed up when offset repairs are needed. Reopen Codex after it succeeds.
 
+## Turn off the Claude Desktop sandbox
+
+In opencodex gateway mode, Claude Desktop turns its local 3P profile into managed policy, so Settings › Claude Code shows "Local sandbox" locked on. This script sets `coworkEgressAllowedHosts` to `["*"]` in the profile opencodex applied and removes `allowedWorkspaceFolders` and `blockReadsOutsideWorkingDirectories`. Shell commands Claude runs can then reach any host and write outside the project.
+
+### macOS and Linux
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.3.0/ocx-claude-sandbox-off.cjs | node
+curl -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.3.0/ocx-claude-sandbox-off.cjs | node - --revert
+```
+
+### Windows PowerShell
+
+Use `curl.exe` because `curl` may be a PowerShell alias:
+
+```powershell
+curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.3.0/ocx-claude-sandbox-off.cjs | node
+curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.3.0/ocx-claude-sandbox-off.cjs | node - --revert
+```
+
+### Windows Command Prompt
+
+```bat
+curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.3.0/ocx-claude-sandbox-off.cjs | node
+curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.3.0/ocx-claude-sandbox-off.cjs | node - --revert
+```
+
+Native Windows Claude Code has no local sandbox, so this change only affects Desktop's egress allowlist there.
+
+After it runs, fully quit and reopen Claude Desktop and start a new Code session. Older sessions keep the old rules. A backup is written next to the profile; `--revert` restores the newest one. `ocx claude desktop apply` keeps keys it does not own, so the change survives re-applying. If a managed Claude Desktop policy exists (`/Library/Managed Preferences/<user>/com.anthropic.claudefordesktop.plist` on macOS, `/etc/claude-desktop/managed-settings.json` on Linux, or `HKLM/HKCU\SOFTWARE\Policies\Claude` on Windows), Desktop ignores the local profile and this script has no effect. Custom locations are supported with `OPENCODEX_CLAUDE_DESKTOP_CONFIG_DIR` or `CLAUDE_USER_DATA_DIR`.
+
 ## Remote-pipe warning
 
 `curl ... | node` downloads and immediately executes remote code with your local user permissions. Review the script and prefer a pinned tag or commit. For higher-assurance use, download it first, inspect it, and run the local file instead:
@@ -142,7 +173,7 @@ In PowerShell or Command Prompt, use `curl.exe` for the download command too.
 
 ## Development
 
-The authless configurator supports Node.js 18 or newer; the task porter requires Node.js 22.13 or newer. There are no third-party dependencies.
+The authless configurator and sandbox script support Node.js 18 or newer; the task porter requires Node.js 22.13 or newer. There are no third-party dependencies.
 
 ```bash
 npm test
