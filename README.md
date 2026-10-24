@@ -17,13 +17,13 @@ Then run this on the device, with the `ocx_pair_…` code from that output.
 macOS, Linux, and Git Bash:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.4.0/ocx-setup.cjs | node - --pairing-code ocx_pair_...
+curl -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.4.1/ocx-setup.cjs | node - --pairing-code ocx_pair_...
 ```
 
 Windows PowerShell:
 
 ```powershell
-curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.4.0/ocx-setup.cjs | node - --pairing-code ocx_pair_...
+curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.4.1/ocx-setup.cjs | node - --pairing-code ocx_pair_...
 ```
 
 It runs these steps in order and stops at the first failure:

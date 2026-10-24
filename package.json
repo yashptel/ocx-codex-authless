@@ -1,6 +1,6 @@
 {
   "name": "ocx-codex-authless",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Configure the OCX Codex provider to use its service token without OpenAI authentication.",
   "type": "module",
   "bin": {
