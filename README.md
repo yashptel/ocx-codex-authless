@@ -2,6 +2,40 @@
 
 Small, cross-platform Node.js utility that configures the OCX Codex provider to use the local OCX service token without requiring OpenAI authentication.
 
+## Set up a device in one command
+
+`ocx-setup.cjs` connects a machine to the OpenCodex hub for Codex and Claude and installs the new key for Codex Desktop. It also replaces a connection to an older or rebuilt hub.
+
+Create a pairing code on the hub. Each code works once and expires within about 30 minutes:
+
+```bash
+ocx hub invite --clients codex,claude
+```
+
+Then run this on the device, with the `ocx_pair_…` code from that output.
+
+macOS, Linux, and Git Bash:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/main/ocx-setup.cjs | node - --pairing-code ocx_pair_...
+```
+
+Windows PowerShell:
+
+```powershell
+curl.exe -fsSL https://raw.githubusercontent.com/yashptel/ocx-codex-authless/main/ocx-setup.cjs | node - --pairing-code ocx_pair_...
+```
+
+It runs these steps in order and stops at the first failure:
+
+1. Read the hub's version from `/healthz` and install the same `@bitkyc08/opencodex` version with `npm install -g` if `ocx --version` differs.
+2. Run `ocx disconnect --keep-catalog` if the machine is connected. If ocx refuses because `~/.codex/config.toml` changed after it was injected, the script backs up `config.toml` and `opencodex-journal.json`, records the current config as the one to keep, and retries. Your Codex settings stay as they are.
+3. Run `ocx connect` for Codex and Claude. The pairing code goes to ocx on stdin, never on its command line.
+4. Check that the hub accepts the new key with `HEAD /v1/catalog`. Nothing in Codex changes if it does not.
+5. Run `ocx-codex-authless.cjs`, which writes the new key to `~/.codex/.env`. Codex Desktop otherwise keeps reading the key for the previous hub from that file.
+
+Afterward, fully quit Codex and Claude Desktop and reopen them. `--hub <url>` connects to a hub other than `https://ocx.squiwo.com`.
+
 ## Run it
 
 Prerequisites: run `ocx connect` and `ocx sync` first. The examples below use the reviewed, immutable `v0.1.0` tag. `main` is also shown for the latest development version.
