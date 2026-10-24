@@ -10,7 +10,7 @@ const { spawnSync } = require("node:child_process");
 const DEFAULT_HUB = "https://ocx.squiwo.com";
 const OCX_PACKAGE = "@bitkyc08/opencodex";
 const AUTHLESS_URL =
-  "https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.4.0/ocx-codex-authless.cjs";
+  "https://raw.githubusercontent.com/yashptel/ocx-codex-authless/v0.4.1/ocx-codex-authless.cjs";
 
 const USAGE = `Usage: ocx-setup --pairing-code <code> [--hub <url>]
 
