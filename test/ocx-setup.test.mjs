@@ -19,6 +19,7 @@ const crypto = require("node:crypto");
 const statePath = process.env.FAKE_OCX_STATE;
 const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
 const args = process.argv.slice(2);
+console.error("opencode-free support was removed because every free model now returns 403 permission_denied under OpenCode's upstream free-tier gate (#7255); the entry and dependent references are disabled. Use opencode-go, or another provider such as opencode-zen or openrouter.");
 state.calls.push(args.join(" "));
 const save = () => fs.writeFileSync(statePath, JSON.stringify(state));
 const configFile = process.env.CODEX_HOME + "/config.toml";
@@ -26,7 +27,7 @@ const journalFile = process.env.CODEX_HOME + "/opencodex-journal.json";
 
 if (args[0] === "--version") { console.log("opencodex " + state.version); save(); return; }
 if (args.join(" ") === "connect status --json") {
-  console.log(JSON.stringify({ state: state.connection })); save(); return;
+  console.log(state.brokenStatus ? "Connection: connected" : JSON.stringify({ state: state.connection })); save(); return;
 }
 if (args[0] === "disconnect") {
   const journal = JSON.parse(fs.readFileSync(journalFile, "utf8"));
@@ -174,4 +175,15 @@ test("requires a pairing code", async () => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /--pairing-code is required/);
   assert.deepEqual(readState(fixture).calls, []);
+});
+
+test("stops when the connection state cannot be read", async () => {
+  const fixture = makeFixture();
+  fs.writeFileSync(fixture.statePath, JSON.stringify({ ...readState(fixture), brokenStatus: true }));
+  const result = await withHub(NEW_TOKEN, (hub) =>
+    runSetup(fixture, ["--pairing-code", PAIRING_CODE, "--hub", hub]));
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Could not read the ocx connection state/);
+  assert.ok(readState(fixture).calls.every((call) => !call.startsWith("connect ") || call === "connect status --json"));
 });

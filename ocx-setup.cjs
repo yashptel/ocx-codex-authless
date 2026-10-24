@@ -57,8 +57,9 @@ function ocx(args, { input, environment = process.env } = {}) {
     // npm installs ocx as ocx.cmd on Windows, which only cmd.exe can launch.
     shell: process.platform === "win32",
   });
-  if (result.error?.code === "ENOENT") return { status: 127, output: "" };
-  return { status: result.status, output: `${result.stdout ?? ""}${result.stderr ?? ""}` };
+  if (result.error?.code === "ENOENT") return { status: 127, stdout: "", output: "" };
+  const stdout = result.stdout ?? "";
+  return { status: result.status, stdout, output: `${stdout}${result.stderr ?? ""}` };
 }
 
 function npm(args, environment) {
@@ -83,13 +84,12 @@ function installedVersion(environment) {
 }
 
 function connectionState(environment) {
-  const { status, output } = ocx(["connect", "status", "--json"], { environment });
-  if (status !== 0) return "disconnected";
+  const { stdout, output } = ocx(["connect", "status", "--json"], { environment });
   try {
-    return JSON.parse(output.slice(output.indexOf("{"))).state ?? "disconnected";
-  } catch {
-    return "disconnected";
-  }
+    const { state } = JSON.parse(stdout);
+    if (typeof state === "string") return state;
+  } catch {}
+  throw new Error(`Could not read the ocx connection state:\n${output.trim()}`);
 }
 
 function backup(filePath) {
